@@ -17,7 +17,10 @@
             </feature>
         </config-file>
 
-        <source-file src="src/org/apache/cordova/plugin/Ipfs.java"
-                     target-dir="src/org/apache/cordova/Ipfs" />
+        <config-file target="AndroidManifest.xml" parent="/manifest">
+            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+        </config-file>
+
+        <source-file src="src/org/apache/cordova/plugin/Ipfs.java" target-dir="src/org/apache/cordova/Ipfs" />
     </platform>
 </plugin>
