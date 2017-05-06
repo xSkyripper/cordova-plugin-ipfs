@@ -1,0 +1,32 @@
+{
+  "name": "cordova-plugin-ipfs",
+  "version": "1.0.0",
+  "description": "A simple Cordova Plugin that wraps go-ipfs v0.4.8",
+  "cordova": {
+    "id": "cordova-plugin-ipfs",
+    "platforms": [
+      "android"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xSkyripper/cordova-plugin-ipfs"
+  },
+  "keywords": [
+    "ipfs",
+    "ecosystem:cordova",
+    "cordova-android"
+  ],
+  "engines": [
+    {
+      "name": "cordova",
+      "version": ">=5.0.0"
+    }
+  ],
+  "author": "xSkyripper",
+  "license": "Apache 2.0",
+  "bugs": {
+    "url": "https://github.com/xSkyripper/cordova-plugin-ipfs/issues"
+  },
+  "homepage": "https://github.com/xSkyripper/cordova-plugin-ipfs"
+}
