@@ -6,7 +6,7 @@
     <keywords>cordova, ipfs</keywords>
 
     <js-module name="ipfs" src="www/ipfs.js">
-        <clobbers target="ipfs"/>
+        <clobbers target="window.CordovaIpfs"/>
     </js-module>
 
     <platform name="android">

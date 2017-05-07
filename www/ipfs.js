@@ -2,10 +2,18 @@ var exec = require('cordova/exec');
 
 var PLUGIN_NAME = 'Ipfs';
 
-function Ipfs() {
-    init: function(args, callback, errorCallback) {
-        exec(args, callback, errorCallback, PLUGIN_NAME, "init");
-    }
+var Ipfs = function () {
+    this.init = function(args, cb, cbErr) {
+        exec(cb, cbErr, PLUGIN_NAME, "init", [args]);
+    };
+
+    this.start = function(args, cb, cbErr) {
+        exec(cb, cbErr, PLUGIN_NAME, "start", [args]);
+    };
+
+    this.stop = function(args, cb, cbErr) {
+        exec(cb, cbErr, PLUGIN_NAME, "stop", [args]);
+    };
 };
 
 module.exports = Ipfs;
