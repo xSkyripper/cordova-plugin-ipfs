@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<plugin id="org.apache.cordova.ipfs" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
-    <name>IPFS</name>
+<plugin id="cordova-plugin-ipfs" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+    <name>Go-IPFS</name>
     <description>Apache Cordova Inter Planetary File System (Go) Wrapper Plugin</description>
     <license>Apache 2.0</license>
-    <keywords>cordova,ipfs</keywords>
+    <keywords>cordova, ipfs</keywords>
 
     <js-module name="ipfs" src="www/ipfs.js">
         <clobbers target="ipfs"/>
     </js-module>
 
     <platform name="android">
-        <config-file parent="/*" target="res/xml/config.xml">
+        <config-file target="res/xml/config.xml" parent="/*">
             <feature name="Ipfs">
-                <param name="android-package" value="org.apache.cordova.plugin.Ipfs"/>
+                <param name="android-package" value="org.apache.cordova.ipfs.Ipfs"/>
                 <param name="onload" value="true" />
             </feature>
         </config-file>
@@ -21,6 +21,6 @@
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
         </config-file>
 
-        <source-file src="src/org/apache/cordova/plugin/Ipfs.java" target-dir="src/org/apache/cordova/Ipfs" />
+        <source-file src="src/android/Ipfs.java" target-dir="src/org/apache/cordova/ipfs" />
     </platform>
 </plugin>
