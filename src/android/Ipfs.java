@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.concurrent.Future;
 
 import org.apache.cordova.CordovaWebView;
 import org.apache.cordova.CallbackContext;
@@ -35,6 +36,8 @@ public class Ipfs extends CordovaPlugin {
     private String ipfsBinPath;
     private String ipfsRepo;
     private Boolean resetRepo;
+    private Process ipfsDaemonProcess = null;
+    private Future ipfsDaemonThreadFuture = null;
 
     private String LOG_TAG = "#######CIP######";
 
@@ -240,15 +243,59 @@ public class Ipfs extends CordovaPlugin {
                 new String[]{"IPFS_PATH=" + ipfsRepo}
         );
 
-        this.execShellAsync(
-                new String[]{ipfsBinPath, "daemon", "--enable-pubsub-experiment"},
-                new String[]{"IPFS_PATH=" + ipfsRepo}
-        );
+        final Runnable ipfsDaemonThread = new Runnable() {
+            @Override
+            public void run() {
+//                Process extrProc;
+                StringBuilder extrOutput = new StringBuilder();
+
+                try {
+                    ipfsDaemonProcess = Runtime.getRuntime().exec(
+                            new String[]{ipfsBinPath, "daemon", "--enable-pubsub-experiment"},
+                            new String[]{"IPFS_PATH=" + ipfsRepo});
+
+                    BufferedReader extrOutputReader = new BufferedReader(new InputStreamReader(ipfsDaemonProcess.getInputStream()));
+                    String line;
+
+                    while ((line = extrOutputReader.readLine()) != null) {
+                        extrOutput.append(line).append("\n");
+                        Log.d(LOG_TAG, line);
+                    }
+
+                    Log.d(LOG_TAG, "IPFS DAEMON EXITVAL: " + ipfsDaemonProcess.waitFor());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        };
+
+        if(ipfsDaemonThreadFuture == null) {
+            ipfsDaemonThreadFuture = cordova.getThreadPool().submit(ipfsDaemonThread);
+        } else {
+            if(ipfsDaemonThreadFuture.isCancelled() || ipfsDaemonThreadFuture.isDone()) {
+                ipfsDaemonThreadFuture = cordova.getThreadPool().submit(ipfsDaemonThread);
+            }
+        }
 
         cbCtx.success("Cordova Ipfs Plugin: start success");
     }
 
     private void stopDaemon(JSONArray args, final CallbackContext cbCtx) {
+        if(this.ipfsDaemonThreadFuture != null) {
+            if(this.ipfsDaemonThreadFuture.isDone()) {
+                Log.d(LOG_TAG, "DAEMON IS STOPPED");
+            } else {
+                Log.d(LOG_TAG, "DAEMON IS STILL DAEMONING");
+            }
+        }
+
+        if (this.ipfsDaemonProcess != null) {
+            this.ipfsDaemonProcess.destroy();
+        }
+
         cbCtx.success("Cordova Ipfs Plugin: stop success");
     }
 
