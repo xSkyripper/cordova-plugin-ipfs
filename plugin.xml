@@ -21,6 +21,8 @@
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
         </config-file>
 
+        <lib-file src="src/android/libs/jarchivelib-0.7.1-jar-with-dependencies.jar" />
         <source-file src="src/android/Ipfs.java" target-dir="src/org/apache/cordova/ipfs" />
+
     </platform>
 </plugin>

@@ -9,6 +9,10 @@ import org.apache.cordova.CordovaWebView;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.rauschig.jarchivelib.ArchiveFormat;
+import org.rauschig.jarchivelib.Archiver;
+import org.rauschig.jarchivelib.ArchiverFactory;
+import org.rauschig.jarchivelib.CompressionType;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -119,7 +123,6 @@ public class Ipfs extends CordovaPlugin {
             conn = (HttpURLConnection) ipfsArchiveSrc.openConnection();
             Log.d(LOG_TAG, "OPENED CONN");
 
-            // TODO: fix - connect freezes on wifi
             conn.connect();
             Log.d(LOG_TAG, "CONNECTED TO SRC");
 
@@ -167,11 +170,24 @@ public class Ipfs extends CordovaPlugin {
 
     private void extractIpfs() {
         Log.d(LOG_TAG, "STARTING EXTRACT");
-        // TODO: implement another way
+
+        // TODO: implement tar.gz extract with apache-commons
+        Archiver archiver = ArchiverFactory.createArchiver(ArchiveFormat.TAR, CompressionType.GZIP);
+        try {
+            archiver.extract(
+                    new File(appFilesDir + "go-ipfs.tar.gz"),
+                    new File(appFilesDir)
+            );
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         this.execShell(
-                new String[]{"busybox", "tar", "fx", appFilesDir + "go-ipfs.tar.gz", "-C", appFilesDir},
-                new String[]{}
+                new String[] {"chmod", "u+x", ipfsBinPath},
+                new String[] {}
         );
+
+
         this.deleteRecursive(new File(appFilesDir + "go-ipfs.tar.gz"));
         Log.d(LOG_TAG, "FINISHED EXTRACT");
     }
