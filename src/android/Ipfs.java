@@ -108,85 +108,67 @@ public class Ipfs extends CordovaPlugin {
         }
     }
 
-    private String downloadIpfs() {
-        InputStream input = null;
-        OutputStream output = null;
-        HttpURLConnection conn = null;
+    private void downloadIpfs() throws Exception {
+        InputStream input;
+        OutputStream output;
+        HttpURLConnection conn;
         int archiveFileLength;
         long totalDownloaded = 0;
         byte block[] = new byte[4096];
         int blockSize;
 
-        try {
-            Log.d(LOG_TAG, "STARTING DOWNLOAD");
 
-            conn = (HttpURLConnection) ipfsArchiveSrc.openConnection();
-            Log.d(LOG_TAG, "OPENED CONN");
+        Log.d(LOG_TAG, "STARTING DOWNLOAD");
 
-            conn.connect();
-            Log.d(LOG_TAG, "CONNECTED TO SRC");
+        conn = (HttpURLConnection) ipfsArchiveSrc.openConnection();
+        Log.d(LOG_TAG, "OPENED CONN");
 
-            if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                return "Server returned HTTP " + conn.getResponseCode()
-                        + " " + conn.getResponseMessage();
-            }
-            Log.d(LOG_TAG, "GOT 200 FROM SRC");
+        conn.connect();
+        Log.d(LOG_TAG, "CONNECTED TO SRC");
 
-            archiveFileLength = conn.getContentLength();
-            File oldArchive = new File(appFilesDir + "go-ipfs.tar.gz");
-            // archive exists and has the same size (TODO: HASH CHECKING)
-            if (oldArchive.exists() && oldArchive.length() == archiveFileLength) {
-                Log.d(LOG_TAG, "archive exists and has the same length");
-                return null;
-            }
+        if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+            throw new Exception("Server returned HTTP " + conn.getResponseCode()
+                    + " " + conn.getResponseMessage());
+        }
+        Log.d(LOG_TAG, "GOT 200 FROM SRC");
 
-            input = conn.getInputStream();
-            output = new FileOutputStream(appFilesDir + "go-ipfs.tar.gz");
+        archiveFileLength = conn.getContentLength();
+        File oldArchive = new File(appFilesDir + "go-ipfs.tar.gz");
+        // archive exists and has the same size (TODO: HASH CHECKING)
+        if (oldArchive.exists() && oldArchive.length() == archiveFileLength) {
+            Log.d(LOG_TAG, "archive exists and has the same length");
+            return;
+        }
 
-            while ((blockSize = input.read(block)) != -1) {
-                totalDownloaded += blockSize;
+        input = conn.getInputStream();
+        output = new FileOutputStream(appFilesDir + "go-ipfs.tar.gz");
+
+        while ((blockSize = input.read(block)) != -1) {
+            totalDownloaded += blockSize;
 //                if (archiveFileLength > 0)
 //                    Log.d(LOG_TAG, "Downloaded " + (int) (totalDownloaded * 100 / archiveFileLength) + "%");
-                output.write(block, 0, blockSize);
-            }
-
-            Log.d(LOG_TAG, "FINISHED DOWNLOADING");
-        } catch (Exception e) {
-            return e.toString();
-        } finally {
-            try {
-                if (output != null)
-                    output.close();
-                if (input != null)
-                    input.close();
-            } catch (IOException ignored) {
-            }
-            if (conn != null)
-                conn.disconnect();
+            output.write(block, 0, blockSize);
         }
 
-        return null;
+        Log.d(LOG_TAG, "FINISHED DOWNLOADING");
+
+        input.close();
+        output.close();
+        conn.disconnect();
     }
 
-    private void extractIpfs() {
+    private void extractIpfs() throws Exception {
         Log.d(LOG_TAG, "STARTING EXTRACT");
 
-        // TODO: implement tar.gz extract with apache-commons
         Archiver archiver = ArchiverFactory.createArchiver(ArchiveFormat.TAR, CompressionType.GZIP);
-        try {
-            archiver.extract(
-                    new File(appFilesDir + "go-ipfs.tar.gz"),
-                    new File(appFilesDir)
-            );
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        this.execShell(
-                new String[] {"chmod", "u+x", ipfsBinPath},
-                new String[] {}
+        archiver.extract(
+                new File(appFilesDir + "go-ipfs.tar.gz"),
+                new File(appFilesDir)
         );
 
+        if (!(new File(ipfsBinPath).setExecutable(true, true))) {
+            throw new Exception("IPFS Bin cannot be set executable");
+        }
 
         this.deleteRecursive(new File(appFilesDir + "go-ipfs.tar.gz"));
         Log.d(LOG_TAG, "FINISHED EXTRACT");
@@ -204,14 +186,10 @@ public class Ipfs extends CordovaPlugin {
         Log.d(LOG_TAG, "INITING FINISHED");
     }
 
-    private String prepareIpfs() {
-        String downResult = this.downloadIpfs();
-        if (downResult != null)
-            return downResult;
+    private void prepareIpfs() throws Exception {
+        this.downloadIpfs();
 
         this.extractIpfs();
-
-        return null;
     }
 
     private void init(JSONArray args, final CallbackContext cbCtx) {
@@ -234,20 +212,24 @@ public class Ipfs extends CordovaPlugin {
         // check if archive exists
         File ipfsBin = new File(ipfsBinPath);
         if (ipfsBin.exists()) {
-            cbCtx.success("IPFS exists !");
+            cbCtx.success("Cordova IPFS Plugin (init): IPFS exists !");
             this.initRepo();
         } else {
-            String prepResult = this.prepareIpfs();
-            if (prepResult != null) {
-                cbCtx.error(prepResult);
+            try {
+                this.prepareIpfs();
+            } catch (Exception e) {
+                e.printStackTrace();
+                cbCtx.error(e.toString());
+                return;
             }
+
             this.initRepo();
-            cbCtx.success("IPFS doesn't exist but it was prepared & inited !");
+            cbCtx.success("Cordova IPFS Plugin (init): IPFS doesn't exist but it was prepared & inited !");
         }
 
     }
 
-    private void startDaemon(JSONArray args, final CallbackContext cbCtx) {
+    private void startDaemon(final CallbackContext cbCtx) {
         //> ipfs config --json API.HTTPHeaders.Access-Control-Allow-Credentials "[\"true\"]"
         //> ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
 
@@ -269,8 +251,8 @@ public class Ipfs extends CordovaPlugin {
         final Runnable ipfsDaemonThread = new Runnable() {
             @Override
             public void run() {
-//                Process extrProc;
-                StringBuilder extrOutput = new StringBuilder();
+                StringBuilder extrOutput;
+                extrOutput = new StringBuilder();
 
                 try {
                     ipfsDaemonProcess = Runtime.getRuntime().exec(
@@ -307,7 +289,7 @@ public class Ipfs extends CordovaPlugin {
         cbCtx.success("Cordova Ipfs Plugin: start success");
     }
 
-    private void stopDaemon(JSONArray args, final CallbackContext cbCtx) {
+    private void stopDaemon(final CallbackContext cbCtx) {
         if (this.ipfsDaemonThreadFuture != null) {
             if (this.ipfsDaemonThreadFuture.isDone()) {
                 Log.d(LOG_TAG, "DAEMON IS STOPPED");
@@ -326,7 +308,6 @@ public class Ipfs extends CordovaPlugin {
                 e.printStackTrace();
             }
         }
-
         cbCtx.success("Cordova Ipfs Plugin: stop success");
     }
 
@@ -341,10 +322,10 @@ public class Ipfs extends CordovaPlugin {
             this.init(args, callbackContext);
             return true;
         } else if (action.equals("start")) {
-            this.startDaemon(args, callbackContext);
+            this.startDaemon(callbackContext);
             return true;
         } else if (action.equals("stop")) {
-            this.stopDaemon(args, callbackContext);
+            this.stopDaemon(callbackContext);
             return true;
         }
         return false;
