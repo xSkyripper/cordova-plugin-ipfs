@@ -7,12 +7,12 @@ var Ipfs = function () {
         exec(cb, cbErr, PLUGIN_NAME, "init", [args]);
     };
 
-    this.start = function(args, cb, cbErr) {
-        exec(cb, cbErr, PLUGIN_NAME, "start", [args]);
+    this.start = function(cb, cbErr) {
+        exec(cb, cbErr, PLUGIN_NAME, "start", []);
     };
 
-    this.stop = function(args, cb, cbErr) {
-        exec(cb, cbErr, PLUGIN_NAME, "stop", [args]);
+    this.stop = function(cb, cbErr) {
+        exec(cb, cbErr, PLUGIN_NAME, "stop", []);
     };
 };
 
