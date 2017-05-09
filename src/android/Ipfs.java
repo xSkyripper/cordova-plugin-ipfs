@@ -24,80 +24,60 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.concurrent.Future;
 
 public class Ipfs extends CordovaPlugin {
-    private String appFilesDir;
     private URL ipfsArchiveSrc;
+    private String appFilesDir;
     private String ipfsBinPath;
     private String ipfsRepo;
-    private Boolean resetRepo;
 
     private Process ipfsDaemonProcess = null;
     private Future ipfsDaemonThreadFuture = null;
 
     private String LOG_TAG = "#######CIP######";
 
-    private void execShell(final String[] cmdArray, final String[] envArray) {
-        Process proc;
+
+    private void execShell(final String[] cmdArray, final String[] envArray, Boolean ignoreExc) throws IOException, InterruptedException {
+        Process proc = Runtime.getRuntime().exec(cmdArray, envArray);
         StringBuilder procOutput = new StringBuilder();
+        StringBuilder procError = new StringBuilder();
 
-        try {
-            proc = Runtime.getRuntime().exec(cmdArray, envArray);
-            BufferedReader procOutputReader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
-            String line;
+        String line;
 
-            while ((line = procOutputReader.readLine()) != null) {
-                procOutput.append(line).append("\n");
-                Log.d(LOG_TAG, line);
-            }
-
-            Log.d(LOG_TAG, procOutput.toString());
-            proc.waitFor();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        BufferedReader procOutputReader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+        while ((line = procOutputReader.readLine()) != null) {
+            procOutput.append(line).append("\n");
+            Log.d(LOG_TAG, line);
         }
 
-    }
+        BufferedReader procErrorReader = new BufferedReader(new InputStreamReader(proc.getErrorStream()));
+        while ((line = procErrorReader.readLine()) != null) {
+            procError.append(line).append("\n");
+            Log.d(LOG_TAG, line);
+        }
 
-    private void execShellAsync(final String[] cmdArray, final String[] envArray) {
-        cordova.getThreadPool().execute(new Runnable() {
-            @Override
-            public void run() {
-                Process proc;
-                StringBuilder procOutput = new StringBuilder();
+        Log.d(LOG_TAG, procOutput.toString());
 
-                try {
-                    proc = Runtime.getRuntime().exec(cmdArray, envArray);
-                    BufferedReader extrOutputReader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
-                    String line;
-
-                    while ((line = extrOutputReader.readLine()) != null) {
-                        procOutput.append(line).append("\n");
-                        Log.d(LOG_TAG, line);
-                    }
-
-                    Log.d(LOG_TAG, procOutput.toString());
-                    proc.waitFor();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-
+        if (!ignoreExc)
+            if (!procError.toString().equals("")) {
+                Log.d(LOG_TAG, "Tried:" + Arrays.toString(cmdArray));
+                throw new IOException(procError.toString());
             }
-        });
+
+        proc.waitFor();
     }
 
-    private void deleteRecursive(File fileOrDirectory) {
+
+    private void deleteRecursive(File fileOrDirectory) throws Exception {
         if (fileOrDirectory.isDirectory())
             for (File child : fileOrDirectory.listFiles())
                 deleteRecursive(child);
-
-        fileOrDirectory.delete();
+        if (!(fileOrDirectory.delete()))
+            Log.d(LOG_TAG, "File " + fileOrDirectory.getName() + " couldn't be deleted !");
     }
+
 
     private boolean isRunning(Process process) {
         try {
@@ -107,6 +87,7 @@ public class Ipfs extends CordovaPlugin {
             return true;
         }
     }
+
 
     private void downloadIpfs() throws Exception {
         InputStream input;
@@ -143,10 +124,18 @@ public class Ipfs extends CordovaPlugin {
         input = conn.getInputStream();
         output = new FileOutputStream(appFilesDir + "go-ipfs.tar.gz");
 
+        int lastDownTotal = -1;
         while ((blockSize = input.read(block)) != -1) {
             totalDownloaded += blockSize;
-//                if (archiveFileLength > 0)
-//                    Log.d(LOG_TAG, "Downloaded " + (int) (totalDownloaded * 100 / archiveFileLength) + "%");
+
+            if (archiveFileLength > 0) {
+                if (((int) (totalDownloaded * 100 / archiveFileLength)) % 10 == 0)
+                    if (((int) (totalDownloaded * 100 / archiveFileLength)) != lastDownTotal) {
+                        lastDownTotal = (int) (totalDownloaded * 100 / archiveFileLength);
+                        Log.d(LOG_TAG, "Downloaded " + lastDownTotal + "%");
+                    }
+            }
+
             output.write(block, 0, blockSize);
         }
 
@@ -156,6 +145,7 @@ public class Ipfs extends CordovaPlugin {
         output.close();
         conn.disconnect();
     }
+
 
     private void extractIpfs() throws Exception {
         Log.d(LOG_TAG, "STARTING EXTRACT");
@@ -167,110 +157,172 @@ public class Ipfs extends CordovaPlugin {
         );
 
         if (!(new File(ipfsBinPath).setExecutable(true, true))) {
-            throw new Exception("IPFS Bin cannot be set executable");
+            throw new Exception("IPFS Bin " + ipfsBinPath + " cannot be set executable !");
         }
 
         this.deleteRecursive(new File(appFilesDir + "go-ipfs.tar.gz"));
         Log.d(LOG_TAG, "FINISHED EXTRACT");
     }
 
-    private void initRepo() {
-        Log.d(LOG_TAG, "INITING IF REPO RESET OR REPO NOT EXISTS");
-        if (this.resetRepo || !(new File(ipfsRepo).exists())) {
-            this.deleteRecursive(new File(ipfsRepo));
-            this.execShell(
-                    new String[]{ipfsBinPath, "init"},
-                    new String[]{"IPFS_PATH=" + this.ipfsRepo}
-            );
-        }
-        Log.d(LOG_TAG, "INITING FINISHED");
-    }
 
     private void prepareIpfs() throws Exception {
         this.downloadIpfs();
-
         this.extractIpfs();
     }
 
-    private void init(JSONArray args, final CallbackContext cbCtx) {
-        // get the config from the provided config JSON
-        try {
-            JSONObject config = args.getJSONObject(0);
-            this.appFilesDir = config.getString("appFilesDir");
-            this.ipfsArchiveSrc = new URL(config.getString("src"));
-            this.resetRepo = config.getBoolean("resetRepo");
-            this.ipfsBinPath = appFilesDir.concat("go-ipfs/ipfs");
-            this.ipfsRepo = appFilesDir.concat(".ipfs");
-            Log.d(LOG_TAG, "ipfsBinPath: " + ipfsBinPath);
-            Log.d(LOG_TAG, "ipfsArchiveSrc: " + ipfsArchiveSrc);
-            Log.d(LOG_TAG, "appFilesDir: " + appFilesDir);
-        } catch (JSONException e) {
-            cbCtx.error("Cordova IPFS Plugin (init): Invalid Config JSON Object ! \n" + e.toString());
-        } catch (MalformedURLException e) {
-            cbCtx.error("Cordova IPFS Plugin (init): Malformed URL ! \n" + e.toString());
-        }
-        // check if archive exists
-        File ipfsBin = new File(ipfsBinPath);
-        if (ipfsBin.exists()) {
-            cbCtx.success("Cordova IPFS Plugin (init): IPFS exists !");
-            this.initRepo();
-        } else {
-            try {
-                this.prepareIpfs();
-            } catch (Exception e) {
-                e.printStackTrace();
-                cbCtx.error(e.toString());
-                return;
-            }
 
-            this.initRepo();
-            cbCtx.success("Cordova IPFS Plugin (init): IPFS doesn't exist but it was prepared & inited !");
-        }
+    private void initRepo() throws Exception {
+        Log.d(LOG_TAG, "INITING IF REPO RESET OR REPO NOT EXISTS");
 
+        this.deleteRecursive(new File(ipfsRepo));
+        this.execShell(
+                new String[]{ipfsBinPath, "init"},
+                new String[]{"IPFS_PATH=" + this.ipfsRepo}, false);
+
+        Log.d(LOG_TAG, "INITING FINISHED");
     }
+
+
+    private void init(final JSONArray args, final CallbackContext cbCtx) {
+
+        final Runnable initAsync = new Runnable() {
+            @Override
+            public void run() {
+                Boolean resetRepo;
+                try {
+                    JSONObject config = args.getJSONObject(0);
+
+                    appFilesDir = config.getString("appFilesDir");
+                    ipfsArchiveSrc = new URL(config.getString("src"));
+                    ipfsBinPath = appFilesDir.concat("go-ipfs/ipfs");
+                    ipfsRepo = appFilesDir.concat(".ipfs");
+                    resetRepo = config.getBoolean("resetRepo");
+
+                    Log.d(LOG_TAG, "ipfsBinPath: " + ipfsBinPath);
+                    Log.d(LOG_TAG, "ipfsArchiveSrc: " + ipfsArchiveSrc);
+                    Log.d(LOG_TAG, "appFilesDir: " + appFilesDir);
+                    Log.d(LOG_TAG, "ipfsRepo: " + ipfsRepo);
+                    Log.d(LOG_TAG, "resetRepo: " + resetRepo);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                    cbCtx.error("Cordova IPFS Plugin (init): \n" + e.toString());
+                    return;
+                } catch (MalformedURLException e) {
+                    e.printStackTrace();
+                    cbCtx.error("Cordova IPFS Plugin (init): \n" + e.toString());
+                    return;
+                }
+
+                if (!(new File(ipfsBinPath).exists()))
+                    try {
+                        prepareIpfs();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        cbCtx.error("Cordova IPFS Plugin (init): \n" + e.toString());
+                        return;
+                    }
+
+                if (resetRepo || !(new File(ipfsRepo).exists()))
+                    try {
+                        initRepo();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        cbCtx.error("Cordova IPFS Plugin (init): \n" + e.toString());
+                        return;
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        cbCtx.error("Cordova IPFS Plugin (init): \n" + e.toString());
+                        return;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        cbCtx.error("Cordova IPFS Plugin (init): \n" + e.toString());
+                        return;
+                    }
+
+                cbCtx.success("Cordova IPFS Plugin (init): IPFS was prepared & inited !");
+            }
+        };
+
+        cordova.getThreadPool().execute(initAsync);
+    }
+
 
     private void startDaemon(final CallbackContext cbCtx) {
         //> ipfs config --json API.HTTPHeaders.Access-Control-Allow-Credentials "[\"true\"]"
         //> ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
 
-        this.execShell(
-                new String[]{
-                        ipfsBinPath, "config", "--json",
-                        "API.HTTPHeaders.Access-Control-Allow-Credentials", "'[\"true\"]'"},
-                new String[]{"IPFS_PATH=" + ipfsRepo}
-        );
-
-        this.execShell(
-                new String[]{
-                        ipfsBinPath, "config", "--json",
-                        "API.HTTPHeaders.Access-Control-Allow-Origin", "'[\"*\"]'"},
-                new String[]{"IPFS_PATH=" + ipfsRepo}
-        );
-
-
         final Runnable ipfsDaemonThread = new Runnable() {
             @Override
             public void run() {
-                StringBuilder extrOutput;
-                extrOutput = new StringBuilder();
+                if (!(new File(ipfsBinPath).exists())) {
+                    cbCtx.error("Cordova IPFS Plugin (start): \n"
+                            + "The IPFS was not prepared (binary not found)"
+                            + " Run init first or wait for init to finish !");
+                    return;
+                }
+
+                if (!(new File(ipfsRepo).exists())) {
+                    cbCtx.error("Cordova IPFS Plugin (start): \n"
+                            + "The IPFS repo was not initialized (" + ipfsRepo + " not found)"
+                            + " Run init first or wait for init to finish !");
+                    return;
+                }
 
                 try {
-                    ipfsDaemonProcess = Runtime.getRuntime().exec(
-                            new String[]{ipfsBinPath, "daemon", "--enable-pubsub-experiment"},
-                            new String[]{"IPFS_PATH=" + ipfsRepo});
+                    execShell(
+                            new String[]{
+                                    ipfsBinPath, "config", "--json",
+                                    "API.HTTPHeaders.Access-Control-Allow-Credentials",
+                                    new String(new byte[]{34, 91, 92, 34, 116, 114, 117, 101, 92, 34, 93, 34})},
+                            new String[]{"IPFS_PATH=" + ipfsRepo}, true);
 
-                    BufferedReader extrOutputReader = new BufferedReader(new InputStreamReader(ipfsDaemonProcess.getInputStream()));
+                    execShell(
+                            new String[]{
+                                    ipfsBinPath, "config", "--json",
+                                    "API.HTTPHeaders.Access-Control-Allow-Origin",
+                                    new String(new byte[]{34, 91, 92, 34, 42, 92, 34, 93, 34})},
+                            new String[]{"IPFS_PATH=" + ipfsRepo}, true);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    cbCtx.error(e.toString());
+                    return;
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    cbCtx.error(e.toString());
+                    return;
+                }
+
+                try {
+                    StringBuilder ipfsDaemonProcOutput = new StringBuilder();
+                    StringBuilder ipfsDaemonProcError = new StringBuilder();
+
                     String line;
 
-                    while ((line = extrOutputReader.readLine()) != null) {
-                        extrOutput.append(line).append("\n");
+                    ipfsDaemonProcess = Runtime.getRuntime().exec(
+                            new String[]{ipfsBinPath, "daemon", "--enable-pubsub-experiment"},
+                            new String[]{"IPFS_PATH=" + ipfsRepo}
+                    );
+                    cbCtx.success("Cordova IPFS Plugin (start): \n Starting ...");
+
+                    BufferedReader ipfsDaemonProcOutputReader = new BufferedReader(new InputStreamReader(ipfsDaemonProcess.getInputStream()));
+                    while ((line = ipfsDaemonProcOutputReader.readLine()) != null) {
+                        ipfsDaemonProcOutput.append(line).append("\n");
                         Log.d(LOG_TAG, line);
                     }
 
-                    Log.d(LOG_TAG, "IPFS DAEMON EXITVAL: " + ipfsDaemonProcess.waitFor());
-                    //TODO: cb ctx that daemon stopped
+                    BufferedReader ipfsDaemonProcErrorReader = new BufferedReader(new InputStreamReader(ipfsDaemonProcess.getErrorStream()));
+                    while ((line = ipfsDaemonProcErrorReader.readLine()) != null) {
+                        ipfsDaemonProcError.append(line).append("\n");
+                        Log.d(LOG_TAG, line);
+                    }
+
+                    Log.d(LOG_TAG, "IPFS daemon exit val: " + ipfsDaemonProcess.waitFor());
+                    Log.d(LOG_TAG, "IPFS daemon out     : " + ipfsDaemonProcOutput.toString());
+                    Log.d(LOG_TAG, "IPFS daemon err     : " + ipfsDaemonProcError.toString());
                 } catch (IOException e) {
                     e.printStackTrace();
+                    cbCtx.error("Cordova IPFS Plugin (start): \n" + e.toString());
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -278,37 +330,37 @@ public class Ipfs extends CordovaPlugin {
             }
         };
 
-        if (ipfsDaemonThreadFuture == null) {
+        if (ipfsDaemonThreadFuture == null)
+            ipfsDaemonThreadFuture = cordova.getThreadPool().submit(ipfsDaemonThread);
+        else if (ipfsDaemonThreadFuture.isCancelled() || ipfsDaemonThreadFuture.isDone()) {
             ipfsDaemonThreadFuture = cordova.getThreadPool().submit(ipfsDaemonThread);
         } else {
-            if (ipfsDaemonThreadFuture.isCancelled() || ipfsDaemonThreadFuture.isDone()) {
-                ipfsDaemonThreadFuture = cordova.getThreadPool().submit(ipfsDaemonThread);
-            }
+            cbCtx.error("Cordova IPFS Plugin (start): Daemon is already running");
         }
-
-        cbCtx.success("Cordova Ipfs Plugin: start success");
     }
 
     private void stopDaemon(final CallbackContext cbCtx) {
-        if (this.ipfsDaemonThreadFuture != null) {
+        if (this.ipfsDaemonThreadFuture != null)
             if (this.ipfsDaemonThreadFuture.isDone()) {
-                Log.d(LOG_TAG, "DAEMON IS STOPPED");
+                Log.d(LOG_TAG, "IPFS daemon thread is STOPPED");
             } else {
-                Log.d(LOG_TAG, "DAEMON IS STILL DAEMONING");
+                Log.d(LOG_TAG, "IPFS daemon thread is still DAEMONING");
             }
-        }
 
-        if (this.ipfsDaemonProcess != null && this.isRunning(this.ipfsDaemonProcess)) {
-            this.ipfsDaemonProcess.destroy();
+        if (this.ipfsDaemonProcess != null)
+            if (this.isRunning(this.ipfsDaemonProcess)) {
+                this.ipfsDaemonProcess.destroy();
 
-            try {
-                int destroyResult = this.ipfsDaemonProcess.waitFor();
-                cbCtx.success("Cordova Ipfs Plugin: stop success; exitVal = " + destroyResult);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+                try {
+                    cbCtx.success("Cordova IPFS Plugin (stop): Success, exit code: " + this.ipfsDaemonProcess.waitFor());
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    cbCtx.error("Cordova IPFS Plugin (stop): \n" + e.toString());
+                }
+                return;
             }
-        }
-        cbCtx.success("Cordova Ipfs Plugin: stop success");
+
+        cbCtx.success("Cordova IPFS Plugin (stop): Success");
     }
 
     @Override
