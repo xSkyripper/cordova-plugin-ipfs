@@ -27,6 +27,13 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.concurrent.Future;
 
+/**
+ * This class extends the CordovaPlugin and provides a wrap for go-ipfs arm binaries
+ * which can be used is Cordova projects. It consists of the basic functionalities like
+ * downloading, extracting, initing the repo, starting / stopping the daemon
+ *
+ * @author xSkyripper
+ */
 public class Ipfs extends CordovaPlugin {
     private URL ipfsArchiveSrc;
     private String appFilesDir;
@@ -39,6 +46,19 @@ public class Ipfs extends CordovaPlugin {
     private String LOG_TAG = "#######CIP######";
 
 
+    /**
+     * Function for starting a system process that will "shell execute" the given command(s)
+     * in the cmdArray, using the environment variables provided in envArray. The process will be
+     * waited to finish
+     * If ignoreExc is true, the error output of the command will be ignored.
+     *
+     * @param cmdArray the array of shell commands
+     * @param envArray the array of environment variables
+     * @param ignoreExc if true, the error output is ignores; else, and IOException will be thrown
+     * @throws IOException thrown if something happens with the process or if the error output is
+     * not ignored
+     * @throws InterruptedException thrown if something happens on waiting the process to finish
+     */
     private void execShell(final String[] cmdArray, final String[] envArray, Boolean ignoreExc) throws IOException, InterruptedException {
         Process proc = Runtime.getRuntime().exec(cmdArray, envArray);
         StringBuilder procOutput = new StringBuilder();
@@ -70,7 +90,13 @@ public class Ipfs extends CordovaPlugin {
     }
 
 
-    private void deleteRecursive(File fileOrDirectory) throws Exception {
+    /**
+     * Deletes a file or a directory recursively; if the delete returns 'false' (some file could
+     * not be deleted), it simply logs a messages
+     *
+     * @param fileOrDirectory the file / dir to be deleted
+     */
+    private void deleteRecursive(File fileOrDirectory) {
         if (fileOrDirectory.isDirectory())
             for (File child : fileOrDirectory.listFiles())
                 deleteRecursive(child);
@@ -78,8 +104,14 @@ public class Ipfs extends CordovaPlugin {
             Log.d(LOG_TAG, "File " + fileOrDirectory.getName() + " couldn't be deleted !");
     }
 
-
-    private boolean isRunning(Process process) {
+    /**
+     * Checks if a process is running by trying to access the exitValue; if an exception is thrown
+     * then the process is still running; otherwise, it finished running and it has an exit value
+     *
+     * @param process the process to be checked
+     * @return true if the process is running; false otherwise
+     */
+    private Boolean isRunning(Process process) {
         try {
             process.exitValue();
             return false;
@@ -88,7 +120,15 @@ public class Ipfs extends CordovaPlugin {
         }
     }
 
-
+    /**
+     * Download the go-ipfs archive from the ipfsArchiveSrc provided at "init"
+     * The method open the connection to the URL provided, checks if the connection
+     * returns HTTP "200", else it throws an exception; It also checks if the archive already exists
+     * and it has the same size as the archive existing at the URL provided;
+     *
+     * @throws Exception if something happens (connection couldn't be initiated, the source server
+     * returned something else than "200", stream exceptions)
+     */
     private void downloadIpfs() throws Exception {
         InputStream input;
         OutputStream output;
@@ -97,7 +137,6 @@ public class Ipfs extends CordovaPlugin {
         long totalDownloaded = 0;
         byte block[] = new byte[4096];
         int blockSize;
-
 
         Log.d(LOG_TAG, "STARTING DOWNLOAD");
 
@@ -146,15 +185,18 @@ public class Ipfs extends CordovaPlugin {
         conn.disconnect();
     }
 
-
+    /**
+     * Extracts the archive downloaded by downloadIpfs using the custom jar included in the project
+     * to the same directory, tries to make the binary executable and
+     * finally deletes the archive for "space reasons"
+     *
+     * @throws Exception an exception is thrown if the IPFS binary couldn't be made executable
+     */
     private void extractIpfs() throws Exception {
         Log.d(LOG_TAG, "STARTING EXTRACT");
 
         Archiver archiver = ArchiverFactory.createArchiver(ArchiveFormat.TAR, CompressionType.GZIP);
-        archiver.extract(
-                new File(appFilesDir + "go-ipfs.tar.gz"),
-                new File(appFilesDir)
-        );
+        archiver.extract(new File(appFilesDir + "go-ipfs.tar.gz"), new File(appFilesDir));
 
         if (!(new File(ipfsBinPath).setExecutable(true, true))) {
             throw new Exception("IPFS Bin " + ipfsBinPath + " cannot be set executable !");
@@ -165,12 +207,23 @@ public class Ipfs extends CordovaPlugin {
     }
 
 
+    /**
+     * Calls the 2 methods that "prepare" go-ipfs ARM: downloadIpfs and extractIpfs
+     *
+     * @throws Exception exceptions are re-thrown from these 2 functions
+     */
     private void prepareIpfs() throws Exception {
         this.downloadIpfs();
         this.extractIpfs();
     }
 
 
+    /**
+     * Deletes the current IPFS Repo folder and tries to recreate it using "ipfs init" exec shell
+     * taking into account possible errors on initing
+     *
+     * @throws Exception thrown by exec shell ('ipfs init') if something happens during initialization
+     */
     private void initRepo() throws Exception {
         Log.d(LOG_TAG, "INITING IF REPO RESET OR REPO NOT EXISTS");
 
@@ -183,6 +236,19 @@ public class Ipfs extends CordovaPlugin {
     }
 
 
+    /**
+     * 'init' plugin function exposed to JS interface, ran asynchronously
+     * Parses the arguments provided, saves them. builds the path of the repo and the binary
+     * and tries to prepare the IPF if the binary doesn't exist
+     * and to init the repo if the IPFS repo dir doesn't exists or if resetRepo option is 'true'
+     *
+     * @param args JSONArray arguments provided from the call; expected to find
+     *             'appFilesDir' the path to the app's files/files dir,
+     *             'src' the URL of the go-ipfs ARM tar.gz archive
+     *             'resetRepo' boolean used for reseting the repo
+     *
+     * @param cbCtx callback context used to call succes or error callbacks
+     */
     private void init(final JSONArray args, final CallbackContext cbCtx) {
 
         final Runnable initAsync = new Runnable() {
@@ -246,7 +312,15 @@ public class Ipfs extends CordovaPlugin {
         cordova.getThreadPool().execute(initAsync);
     }
 
-
+    /**
+     * 'start' plugin function exposed to JS interface, ran asynchronously
+     * Checks if the IPFS binary and the IPFS repo dir exist, throwing an error of they don't
+     * Tries to set through exec shell the IPFS config access control
+     * Starts the IPFS daemon with 'pubsub' in a new process
+     * contained by a thread if it's not already running and sets the local Future of the thread
+     *
+     * @param cbCtx callback context used to call success or error callbacks
+     */
     private void startDaemon(final CallbackContext cbCtx) {
         //> ipfs config --json API.HTTPHeaders.Access-Control-Allow-Credentials "[\"true\"]"
         //> ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
@@ -339,6 +413,12 @@ public class Ipfs extends CordovaPlugin {
         }
     }
 
+    /**
+     * 'stop' plugin function exposed to JS interface
+     * Stops the IPFS daemon if it's running and waits for the process to exit
+     *
+     * @param cbCtx callback context used to call succes or error callbacks
+     */
     private void stopDaemon(final CallbackContext cbCtx) {
         if (this.ipfsDaemonThreadFuture != null)
             if (this.ipfsDaemonThreadFuture.isDone()) {
