@@ -8,6 +8,7 @@ IPFS is a new hypermedia distribution protocol, addressed by content and identit
 
 More here:
 https://github.com/ipfs/ipfs
+
 https://github.com/ipfs/go-ipfs
 
 **Want to hack on IPFS?**
