@@ -409,7 +409,7 @@ public class Ipfs extends CordovaPlugin {
         else if (ipfsDaemonThreadFuture.isCancelled() || ipfsDaemonThreadFuture.isDone()) {
             ipfsDaemonThreadFuture = cordova.getThreadPool().submit(ipfsDaemonThread);
         } else {
-            cbCtx.error("Cordova IPFS Plugin (start): Daemon is already running");
+            cbCtx.success("Cordova IPFS Plugin (start): Daemon is already running");
         }
     }
 
