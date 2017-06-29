@@ -232,10 +232,10 @@ public class Ipfs extends CordovaPlugin {
 
     /**
      * Reads the IPFS config file and adds the next permissions on HTTPHeaders for API connections
-     *  API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
-     *  API.HTTPHeaders.Access-Control-Allow-Credentials "[\"true\"]"
+     * API.HTTPHeaders.Access-Control-Allow-Origin "[\"*\"]"
+     * API.HTTPHeaders.Access-Control-Allow-Credentials "[\"true\"]"
      *
-     * @throws IOException if the config file doesn't exist or other problem
+     * @throws IOException   if the config file doesn't exist or other problem
      * @throws JSONException if the json data cannot be parse or other problem
      */
     private void configAPI() throws IOException, JSONException {
@@ -267,6 +267,7 @@ public class Ipfs extends CordovaPlugin {
         FileWriter file = new FileWriter(ipfsRepo + "config");
         file.write(jsonConfig.toString(4));
         file.close();
+        Log.d(LOG_TAG, "FINISHED CONFIGING FOR API !");
     }
 
     /**
@@ -393,6 +394,18 @@ public class Ipfs extends CordovaPlugin {
                 }
 
                 try {
+                    configAPI();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    cbCtx.error("Cordova IPFS Plugin (start): \n" + e.toString());
+                    return;
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                    cbCtx.error("Cordova IPFS Plugin (start): \n" + e.toString());
+                    return;
+                }
+
+                try {
                     StringBuilder ipfsDaemonProcOutput = new StringBuilder();
                     StringBuilder ipfsDaemonProcError = new StringBuilder();
 
@@ -408,39 +421,6 @@ public class Ipfs extends CordovaPlugin {
                     while ((line = ipfsDaemonProcOutputReader.readLine()) != null) {
                         ipfsDaemonProcOutput.append(line).append("\n");
                         if (line.contains("Daemon is ready")) {
-
-//                            try {
-//                                // ./ipfs config --json API.HTTPHeaders.Access-Control-Allow-Credentials "[\"*\"]"
-//                                execShell(
-//                                        new String[]{
-//                                                "ipfs", "config", "--json",
-//                                                "API.HTTPHeaders.Access-Control-Allow-Credentials",
-//                                                "\"[\\\"*\\\"]\""},
-//                                        new String[]{"IPFS_PATH=" + ipfsRepo,
-//                                                "PATH=" + "/data/user/0/com.phonegap.helloworld/files/files/go-ipfs"},
-//                                        true, null);
-//
-//                                execShell(
-//                                        new String[]{
-//                                                "ipfs", "config", "--json",
-//                                                "API.HTTPHeaders.Access-Control-Allow-Origin",
-//                                                "\"[\\\"true\\\"]\""},
-//                                        new String[]{"IPFS_PATH=" + ipfsRepo,
-//                                                "PATH=" + "/data/user/0/com.phonegap.helloworld/files/files/go-ipfs"},
-//                                        true, null);
-//
-//                            } catch (IOException e) {
-//                                e.printStackTrace();
-//                                cbCtx.error(e.toString());
-//                                return;
-//                            } catch (InterruptedException e) {
-//                                e.printStackTrace();
-//                                cbCtx.error(e.toString());
-//                                return;
-//                            }
-
-                            configAPI();
-
                             cbCtx.success("Cordova IPFS Plugin (start): \n Started");
                         }
                         Log.d(LOG_TAG, line);
@@ -459,9 +439,6 @@ public class Ipfs extends CordovaPlugin {
                     e.printStackTrace();
                     cbCtx.error("Cordova IPFS Plugin (start): \n" + e.toString());
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
-                    cbCtx.error("Cordova IPFS Plugin (start): \n" + e.toString());
-                } catch (JSONException e) {
                     e.printStackTrace();
                     cbCtx.error("Cordova IPFS Plugin (start): \n" + e.toString());
                 }
